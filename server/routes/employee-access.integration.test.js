@@ -1,0 +1,169 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import request from 'supertest';
+import { createApp } from '../app.js';
+import { startTestDB, stopTestDB, clearTestDB } from '../test/db.js';
+
+const app = createApp();
+
+beforeAll(async () => {
+    await startTestDB();
+}, 60000);
+
+afterAll(async () => {
+    await stopTestDB();
+});
+
+beforeEach(async () => {
+    await clearTestDB();
+});
+
+async function registerOwner(email = 'owner@acme.test') {
+    const agent = request.agent(app);
+    const res = await agent.post('/api/auth/register').send({
+        organizationName: 'Acme Corp',
+        organizationAddress: '123 Main St, Springfield',
+        adminName: 'Test Owner',
+        email,
+        password: 'correct-horse-9',
+    });
+    return { agent, body: res.body };
+}
+
+describe('Employee shared login', () => {
+    it('is created automatically on registration and returned once, with the org\'s sequential company code', async () => {
+        const { body } = await registerOwner();
+        expect(body.employeeAccess).toBeDefined();
+        expect(body.employeeAccess.companyCode).toBe(body.user.organization.companyCode);
+        expect(body.employeeAccess.companyCode).toMatch(/^\d{3,}$/);
+        expect(typeof body.employeeAccess.password).toBe('string');
+        expect(body.employeeAccess.password.length).toBeGreaterThan(0);
+    });
+
+    it('lets an employee log in with the company code and shared password, scoped to that org', async () => {
+        const { body } = await registerOwner();
+        const { companyCode, password } = body.employeeAccess;
+
+        const employeeAgent = request.agent(app);
+        const loginRes = await employeeAgent.post('/api/auth/employee-login').send({ companyCode, password });
+
+        expect(loginRes.status).toBe(200);
+        expect(loginRes.body.user.role).toBe('member');
+        expect(loginRes.body.user.isEmployeeAccount).toBe(true);
+        expect(loginRes.body.user.organization.companyCode).toBe(companyCode);
+
+        const meRes = await employeeAgent.get('/api/auth/me');
+        expect(meRes.status).toBe(200);
+        expect(meRes.body.user.isEmployeeAccount).toBe(true);
+    });
+
+    it('rejects the wrong shared password', async () => {
+        const { body } = await registerOwner();
+        const res = await request(app).post('/api/auth/employee-login').send({
+            companyCode: body.employeeAccess.companyCode,
+            password: 'totally-wrong-password',
+        });
+        expect(res.status).toBe(401);
+    });
+
+    it('rejects an unknown company code', async () => {
+        const res = await request(app).post('/api/auth/employee-login').send({
+            companyCode: 'does-not-exist',
+            password: 'anything',
+        });
+        expect(res.status).toBe(401);
+    });
+
+    it('two different orgs never receive the same company code', async () => {
+        const first = await registerOwner('owner-a@test.com');
+        const second = await registerOwner('owner-b@test.com');
+        expect(first.body.employeeAccess.companyCode).not.toBe(second.body.employeeAccess.companyCode);
+    });
+
+    it('an employee account can read policies and use chat but not upload or delete', async () => {
+        const { agent: ownerAgent, body } = await registerOwner();
+        const { companyCode, password } = body.employeeAccess;
+
+        const employeeAgent = request.agent(app);
+        await employeeAgent.post('/api/auth/employee-login').send({ companyCode, password });
+
+        const listRes = await employeeAgent.get('/api/policies');
+        expect(listRes.status).toBe(200);
+
+        const uploadRes = await employeeAgent.post('/api/policies').send({
+            file_url: `https://res.cloudinary.com/docyra-demo/image/upload/v1/docyra_vault/${(await ownerAgent.get('/api/auth/me')).body.user.organization.id}/x.pdf`,
+            name: 'Should Not Upload',
+            department: 'HR',
+            lastUpdated: '2026-01-01',
+        });
+        expect(uploadRes.status).toBe(403);
+    });
+
+    it('the shared employee account cannot change its own password', async () => {
+        const { body } = await registerOwner();
+        const employeeAgent = request.agent(app);
+        await employeeAgent.post('/api/auth/employee-login').send(body.employeeAccess);
+
+        const res = await employeeAgent.post('/api/auth/change-password').send({
+            currentPassword: body.employeeAccess.password,
+            newPassword: 'a-new-password-employees-should-not-set-1',
+        });
+        expect(res.status).toBe(403);
+    });
+
+    describe('POST /api/auth/employee-access/regenerate', () => {
+        it('requires owner/admin — a non-admin cannot rotate the shared password', async () => {
+            const { body } = await registerOwner();
+            const employeeAgent = request.agent(app);
+            await employeeAgent.post('/api/auth/employee-login').send(body.employeeAccess);
+
+            const res = await employeeAgent.post('/api/auth/employee-access/regenerate');
+            expect(res.status).toBe(403);
+        });
+
+        it('rotates the password and invalidates sessions issued with the old one', async () => {
+            const { agent: ownerAgent, body } = await registerOwner();
+            const { companyCode, password: oldPassword } = body.employeeAccess;
+
+            const employeeAgent = request.agent(app);
+            await employeeAgent.post('/api/auth/employee-login').send({ companyCode, password: oldPassword });
+            const beforeRotate = await employeeAgent.get('/api/auth/me');
+            expect(beforeRotate.status).toBe(200);
+
+            const regenRes = await ownerAgent.post('/api/auth/employee-access/regenerate');
+            expect(regenRes.status).toBe(200);
+            const newPassword = regenRes.body.password;
+            expect(newPassword).not.toBe(oldPassword);
+
+            // Old session (JWT signed with the pre-rotation tokenVersion) is now invalid.
+            const afterRotate = await employeeAgent.get('/api/auth/me');
+            expect(afterRotate.status).toBe(401);
+
+            // The new password works.
+            const newLogin = await request(app).post('/api/auth/employee-login').send({ companyCode, password: newPassword });
+            expect(newLogin.status).toBe(200);
+
+            // The old password no longer works.
+            const oldLoginAttempt = await request(app).post('/api/auth/employee-login').send({ companyCode, password: oldPassword });
+            expect(oldLoginAttempt.status).toBe(401);
+        });
+    });
+
+    describe('GET /api/auth/employee-access', () => {
+        it('requires owner/admin', async () => {
+            const { body } = await registerOwner();
+            const employeeAgent = request.agent(app);
+            await employeeAgent.post('/api/auth/employee-login').send(body.employeeAccess);
+
+            const res = await employeeAgent.get('/api/auth/employee-access');
+            expect(res.status).toBe(403);
+        });
+
+        it('returns the company code and setup status for an admin', async () => {
+            const { agent: ownerAgent, body } = await registerOwner();
+            const res = await ownerAgent.get('/api/auth/employee-access');
+            expect(res.status).toBe(200);
+            expect(res.body.companyCode).toBe(body.employeeAccess.companyCode);
+            expect(res.body.isSetUp).toBe(true);
+        });
+    });
+});
