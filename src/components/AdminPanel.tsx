@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import type { Policy } from '../types';
-import EmployeeAccessCard from './EmployeeAccessCard';
 import { useTilt3D } from '../hooks/useTilt3D';
 import { useHoverLift } from '../hooks/useHoverLift';
 
@@ -151,8 +150,6 @@ const AdminPanel = ({ policies, onRefresh }: AdminPanelProps) => {
                         </div>
                     </div>
                 </div>
-
-                <EmployeeAccessCard />
 
                 {/* Navigation & Messaging */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">

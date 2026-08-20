@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Building2, KeyRound, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../context/useAuth';
+import EmployeeAccessCard from './EmployeeAccessCard';
 import type { CompanySize } from '../types';
 
 const COMPANY_SIZES: CompanySize[] = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
@@ -166,6 +167,8 @@ const CompanySettings = () => {
                         {savingOrg ? 'Saving...' : 'Save Company Details'}
                     </button>
                 </form>
+
+                <EmployeeAccessCard />
 
                 {/* Admin password */}
                 <form onSubmit={handlePasswordSubmit} className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6">

@@ -83,13 +83,13 @@ const EmployeeAccessCard = () => {
     if (!info) return null;
 
     return (
-        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6 mb-10">
+        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6 mb-8">
             <div className="flex items-center gap-3 mb-4">
                 <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
                     <Users size={20} />
                 </div>
                 <div>
-                    <h4 className="font-black text-slate-800 text-sm uppercase tracking-widest">Employee Access</h4>
+                    <h4 className="font-black text-slate-800 text-sm uppercase tracking-widest">Employee Password Change</h4>
                     <p className="text-slate-400 text-xs font-medium">One shared login every employee uses to ask DOCYRA questions</p>
                 </div>
             </div>
