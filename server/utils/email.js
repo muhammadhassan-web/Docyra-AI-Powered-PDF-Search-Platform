@@ -11,6 +11,10 @@ function getTransporter() {
         transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
+            // Render's network doesn't route IPv6, but Node/nodemailer resolves
+            // smtp.gmail.com to an AAAA (IPv6) address there, which fails with
+            // ENETUNREACH — force IPv4 so the connection can actually happen.
+            family: 4,
             // Without these, a blocked/unreachable SMTP port (some hosts
             // restrict outbound 465/587) hangs the request indefinitely
             // instead of failing — nodemailer's own defaults are minutes long.
