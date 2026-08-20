@@ -17,7 +17,7 @@ beforeEach(async () => {
     await clearTestDB();
 });
 
-async function registerOwner(email = 'owner@acme.test') {
+async function registerOwner(email = 'owner@acme.test', employeePassword = 'team-password-1') {
     const agent = request.agent(app);
     const res = await agent.post('/api/auth/register').send({
         organizationName: 'Acme Corp',
@@ -25,6 +25,7 @@ async function registerOwner(email = 'owner@acme.test') {
         adminName: 'Test Owner',
         email,
         password: 'correct-horse-9',
+        employeePassword,
     });
     return { agent, body: res.body };
 }
@@ -129,9 +130,10 @@ describe('Employee shared login', () => {
             const beforeRotate = await employeeAgent.get('/api/auth/me');
             expect(beforeRotate.status).toBe(200);
 
-            const regenRes = await ownerAgent.post('/api/auth/employee-access/regenerate');
+            const newPassword = 'rotated-password-1';
+            const regenRes = await ownerAgent.post('/api/auth/employee-access/regenerate').send({ password: newPassword });
             expect(regenRes.status).toBe(200);
-            const newPassword = regenRes.body.password;
+            expect(regenRes.body.password).toBe(newPassword);
             expect(newPassword).not.toBe(oldPassword);
 
             // Old session (JWT signed with the pre-rotation tokenVersion) is now invalid.

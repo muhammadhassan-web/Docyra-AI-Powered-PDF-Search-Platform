@@ -30,7 +30,7 @@ const EmployeeAccessRevealModal = () => {
                 <h2 className="text-xl font-extrabold text-slate-800 mb-1 text-center">Employee Access Created</h2>
                 <p className="text-sm text-slate-500 mb-6 text-center">
                     Share this with your employees so they can log in and ask DOCYRA questions instead of emailing HR/IT.
-                    This password is shown <span className="font-bold">only once</span> — you can regenerate it anytime from Admin Portal → Employee Access.
+                    You can change this password anytime from Admin Portal → Employee Access.
                 </p>
 
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4 space-y-3">

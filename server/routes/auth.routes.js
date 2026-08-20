@@ -8,7 +8,7 @@ import Organization, { COMPANY_SIZES } from '../models/Organization.js';
 import User from '../models/User.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { slugify } from '../utils/slug.js';
-import { employeeAccountEmail, generateSharedPassword } from '../utils/employeeAccess.js';
+import { employeeAccountEmail } from '../utils/employeeAccess.js';
 import { getNextCompanyCode } from '../utils/companyCode.js';
 
 const router = Router();
@@ -23,11 +23,13 @@ function cookieOptions(user) {
     return {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        // 'strict' in production: this app has no cross-site linking flow that
-        // needs 'lax', so there's no reason to accept the weaker default.
+        // 'none' in production: the frontend (Vercel) and API (Render) are served
+        // from different origins, so the cookie must be sent cross-site on fetch
+        // requests — 'strict'/'lax' are both silently dropped by the browser here.
+        // Requires secure:true, which is already forced above in production.
         // 'lax' in dev only because Vite's dev server and the API run on
-        // different ports, which 'strict' would break for local testing.
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        // different ports, which 'none' doesn't require but 'strict' would break.
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: user.isEmployeeAccount ? EMPLOYEE_COOKIE_MAX_AGE : ADMIN_COOKIE_MAX_AGE,
     };
 }
@@ -61,6 +63,13 @@ const strongPassword = z.string()
     .regex(/[A-Za-z]/, 'Password must include at least one letter')
     .regex(/[0-9]/, 'Password must include at least one number');
 
+// Deliberately lighter than the admin's strongPassword: this is a single
+// credential a company hands out verbally/over chat to every employee, so
+// the company picks something memorable rather than fighting complexity rules.
+const employeePassword = z.string()
+    .min(6, 'Employee password must be at least 6 characters')
+    .max(200);
+
 const registerSchema = z.object({
     organizationName: z.string().min(2).max(100),
     organizationAddress: z.string().min(5).max(300),
@@ -69,6 +78,7 @@ const registerSchema = z.object({
     adminName: z.string().min(2).max(100),
     email: z.string().email(),
     password: strongPassword,
+    employeePassword,
 });
 
 router.post('/register', async (req, res, next) => {
@@ -76,11 +86,10 @@ router.post('/register', async (req, res, next) => {
     try {
         const {
             organizationName, organizationAddress, industry, companySize,
-            adminName, email, password,
+            adminName, email, password, employeePassword: chosenEmployeePassword,
         } = registerSchema.parse(req.body);
         const passwordHash = await bcrypt.hash(password, 12);
-        const employeePassword = generateSharedPassword();
-        const employeePasswordHash = await bcrypt.hash(employeePassword, 12);
+        const employeePasswordHash = await bcrypt.hash(chosenEmployeePassword, 12);
 
         let organization, user;
         try {
@@ -142,7 +151,7 @@ router.post('/register', async (req, res, next) => {
         res.cookie(COOKIE_NAME, token, cookieOptions(user));
         res.status(201).json({
             user: serializeUser(user, organization),
-            employeeAccess: { companyCode: organization.companyCode, password: employeePassword },
+            employeeAccess: { companyCode: organization.companyCode, password: chosenEmployeePassword },
         });
     } catch (err) {
         if (err.name === 'ZodError') return res.status(400).json({ error: err.issues[0]?.message || 'Invalid input' });
@@ -246,12 +255,12 @@ router.post('/employee-login', employeeLoginLimiter, async (req, res, next) => {
     }
 });
 
-// Owner/admin only: rotate the shared employee password. Returns the new
-// plaintext password exactly once — like the initial one from /register, it
-// is never stored or retrievable again after this response.
+// Owner/admin only: rotate the shared employee password to one the company
+// chooses. Returns it once — like the initial one from /register, it is
+// never stored or retrievable again after this response.
 router.post('/employee-access/regenerate', requireAuth, requireRole('owner', 'admin'), async (req, res, next) => {
     try {
-        const password = generateSharedPassword();
+        const { password } = z.object({ password: employeePassword }).parse(req.body);
         const passwordHash = await bcrypt.hash(password, 12);
 
         let employeeUser = await User.findOne({ organizationId: req.user.organizationId, isEmployeeAccount: true });
@@ -275,6 +284,7 @@ router.post('/employee-access/regenerate', requireAuth, requireRole('owner', 'ad
 
         res.json({ password });
     } catch (err) {
+        if (err.name === 'ZodError') return res.status(400).json({ error: err.issues[0]?.message || 'Invalid input' });
         next(err);
     }
 });

@@ -9,6 +9,7 @@ export interface RegisterInput {
     adminName: string;
     email: string;
     password: string;
+    employeePassword: string;
 }
 
 export interface AuthContextValue {

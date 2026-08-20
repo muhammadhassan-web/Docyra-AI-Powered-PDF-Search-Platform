@@ -16,6 +16,7 @@ function registerPayload(overrides = {}) {
         adminName: 'Ada Owner',
         email: 'owner@acme.test',
         password: VALID_PASSWORD,
+        employeePassword: 'team-password-1',
         ...overrides,
     };
 }

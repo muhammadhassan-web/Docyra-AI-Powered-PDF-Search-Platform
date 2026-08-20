@@ -10,6 +10,8 @@ interface EmployeeAccessInfo {
 const EmployeeAccessCard = () => {
     const [info, setInfo] = useState<EmployeeAccessInfo | null>(null);
     const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
+    const [showForm, setShowForm] = useState(false);
+    const [newPassword, setNewPassword] = useState('');
     const [regenerating, setRegenerating] = useState(false);
     const [copied, setCopied] = useState(false);
     const [error, setError] = useState('');
@@ -20,16 +22,19 @@ const EmployeeAccessCard = () => {
             .catch(() => setError('Could not load employee access info.'));
     }, []);
 
-    const handleRegenerate = async () => {
+    const handleRegenerate = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (revealedPassword && !window.confirm('This will sign out any employees currently logged in with the old password. Continue?')) return;
         setRegenerating(true);
         setError('');
         try {
-            const { password } = await api.post<{ password: string }>('/api/auth/employee-access/regenerate');
+            const { password } = await api.post<{ password: string }>('/api/auth/employee-access/regenerate', { password: newPassword });
             setRevealedPassword(password);
             setInfo(prev => (prev ? { ...prev, isSetUp: true } : prev));
+            setShowForm(false);
+            setNewPassword('');
         } catch (err) {
-            setError(err instanceof ApiError ? err.message : 'Failed to generate a password.');
+            setError(err instanceof ApiError ? err.message : 'Failed to set the password.');
         } finally {
             setRegenerating(false);
         }
@@ -67,14 +72,36 @@ const EmployeeAccessCard = () => {
                 </div>
 
                 <button
-                    onClick={handleRegenerate}
-                    disabled={regenerating}
-                    className="flex items-center justify-center gap-2 bg-[#002e5d] text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-900 transition-all disabled:opacity-60 shrink-0"
+                    onClick={() => setShowForm((v) => !v)}
+                    className="flex items-center justify-center gap-2 bg-[#002e5d] text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-900 transition-all shrink-0"
                 >
-                    <RefreshCw size={14} className={regenerating ? 'animate-spin' : ''} />
-                    {info.isSetUp ? 'Regenerate Password' : 'Generate Password'}
+                    <RefreshCw size={14} />
+                    {info.isSetUp ? 'Change Password' : 'Set Password'}
                 </button>
             </div>
+
+            {showForm && (
+                <form onSubmit={handleRegenerate} className="mt-4 flex flex-col sm:flex-row gap-3">
+                    <input
+                        type="text"
+                        placeholder="New shared password"
+                        aria-label="New shared password"
+                        className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        minLength={6}
+                        autoFocus
+                        required
+                    />
+                    <button
+                        type="submit"
+                        disabled={regenerating}
+                        className="bg-[#002e5d] text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-900 transition-all disabled:opacity-60 shrink-0"
+                    >
+                        {regenerating ? 'Saving...' : 'Save'}
+                    </button>
+                </form>
+            )}
 
             {error && <p className="text-red-600 text-xs font-bold mt-3">{error}</p>}
 

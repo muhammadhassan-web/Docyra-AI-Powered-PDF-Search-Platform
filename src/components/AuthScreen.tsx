@@ -25,6 +25,7 @@ const AuthScreen = ({ initialAudience = 'admin', initialMode = 'login', onBack }
     const [industry, setIndustry] = useState('');
     const [companySize, setCompanySize] = useState<CompanySize | ''>('');
     const [adminName, setAdminName] = useState('');
+    const [employeePassword, setEmployeePassword] = useState('');
 
     // Shared
     const [email, setEmail] = useState('');
@@ -54,6 +55,7 @@ const AuthScreen = ({ initialAudience = 'admin', initialMode = 'login', onBack }
                     adminName,
                     email,
                     password,
+                    employeePassword,
                 });
             }
         } catch (err) {
@@ -235,6 +237,23 @@ const AuthScreen = ({ initialAudience = 'admin', initialMode = 'login', onBack }
                             />
                         </label>
                         <p className="text-[10px] text-slate-400 -mt-1">At least 10 characters, with a letter and a number.</p>
+
+                        <label className="block">
+                            <span className="sr-only">Employee Access Password</span>
+                            <input
+                                type="text"
+                                placeholder="Employee Access Password"
+                                aria-label="Employee Access Password"
+                                className="w-full p-4 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 outline-none transition-all"
+                                value={employeePassword}
+                                onChange={(e) => setEmployeePassword(e.target.value)}
+                                minLength={6}
+                                required
+                            />
+                        </label>
+                        <p className="text-[10px] text-slate-400 -mt-1">
+                            One shared password every employee will use to sign in — choose something simple you can tell your team. At least 6 characters.
+                        </p>
                     </div>
                 ) : (
                     <>

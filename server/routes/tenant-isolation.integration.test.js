@@ -51,6 +51,7 @@ async function registerOrg(agent, { organizationName, email, password = 'correct
         adminName: 'Test Owner',
         email,
         password,
+        employeePassword: 'team-password-1',
     });
     return res.body.user;
 }
