@@ -22,6 +22,16 @@ import organizationRoutes from './routes/organization.routes.js';
 export function createApp() {
     const app = express();
 
+    // Render sits behind Cloudflare, so every request arrives through two
+    // reverse proxies (Cloudflare edge, then Render's own) before reaching
+    // this process — X-Forwarded-For has two proxy hops appended ahead of
+    // the real client IP. Without telling Express how many hops to trust,
+    // express-rate-limit's IP validation treats that header shape as
+    // untrustworthy/spoofed and throws (ERR_ERL_UNEXPECTED_X_FORWARDED_FOR),
+    // which hangs the request instead of responding — this silently broke
+    // every rate-limited /api/auth request (register, login, forgot-password).
+    app.set('trust proxy', 2);
+
     app.use(pinoHttp({
         logger,
         genReqId: (req, res) => {
