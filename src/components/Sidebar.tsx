@@ -1,14 +1,16 @@
-import { ShieldCheck, FileText, Database, Lock, LogOut, ArrowLeftRight } from 'lucide-react';
+import { ShieldCheck, FileText, Database, Lock, LogOut, ArrowLeftRight, Settings } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
 import type { Policy } from '../types';
 
 interface SidebarProps {
     onToggleAdmin: () => void;
+    onOpenSettings: () => void;
     isAdmin: boolean;
+    isSettings: boolean;
     documents: Policy[];
 }
 
-const Sidebar = ({ onToggleAdmin, isAdmin, documents }: SidebarProps) => {
+const Sidebar = ({ onToggleAdmin, onOpenSettings, isAdmin, isSettings, documents }: SidebarProps) => {
     const { user, logout } = useAuth();
 
     return (
@@ -86,24 +88,35 @@ const Sidebar = ({ onToggleAdmin, isAdmin, documents }: SidebarProps) => {
                 </div>
 
                 {!user?.isEmployeeAccount && (
-                    <button
-                        onClick={onToggleAdmin}
-                        className="p-5 pt-3 transition-all text-left w-full group active:scale-[0.98] hover:bg-blue-900/60"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black shadow-lg transition-transform bg-blue-600 text-white">
-                                <ArrowLeftRight size={18} />
+                    <>
+                        <button
+                            onClick={onToggleAdmin}
+                            className="p-5 pt-3 pb-2 transition-all text-left w-full group active:scale-[0.98] hover:bg-blue-900/60"
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black shadow-lg transition-transform bg-blue-600 text-white">
+                                    <ArrowLeftRight size={18} />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-bold tracking-tight truncate">
+                                        {isAdmin || isSettings ? 'Back to Chat' : 'Admin Portal'}
+                                    </p>
+                                    <p className="text-[10px] text-blue-300 font-medium flex items-center gap-1 opacity-80">
+                                        <Lock size={10} /> {isAdmin || isSettings ? 'Employee Mode' : 'Vault Management'}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="min-w-0">
-                                <p className="text-sm font-bold tracking-tight truncate">
-                                    {isAdmin ? 'Back to Chat' : 'Admin Portal'}
-                                </p>
-                                <p className="text-[10px] text-blue-300 font-medium flex items-center gap-1 opacity-80">
-                                    <Lock size={10} /> {isAdmin ? 'Employee Mode' : 'Vault Management'}
-                                </p>
+                        </button>
+                        <button
+                            onClick={onOpenSettings}
+                            className={`px-5 pb-4 pt-1 transition-all text-left w-full group active:scale-[0.98] hover:bg-blue-900/60 flex items-center gap-4 ${isSettings ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}
+                        >
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-900/40 text-blue-300 group-hover:text-white shrink-0">
+                                <Settings size={16} />
                             </div>
-                        </div>
-                    </button>
+                            <p className="text-xs font-bold tracking-tight truncate text-blue-200 group-hover:text-white">Company Settings</p>
+                        </button>
+                    </>
                 )}
 
                 {/* Visual buffer for mobile home indicator bars */}

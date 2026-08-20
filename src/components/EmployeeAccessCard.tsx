@@ -11,7 +11,12 @@ const EmployeeAccessCard = () => {
     const [info, setInfo] = useState<EmployeeAccessInfo | null>(null);
     const [revealedPassword, setRevealedPassword] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
+    const [useCode, setUseCode] = useState(false);
+    const [code, setCode] = useState('');
+    const [codeSent, setCodeSent] = useState(false);
+    const [requestingCode, setRequestingCode] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
     const [copied, setCopied] = useState(false);
     const [error, setError] = useState('');
@@ -22,17 +27,41 @@ const EmployeeAccessCard = () => {
             .catch(() => setError('Could not load employee access info.'));
     }, []);
 
+    const resetForm = () => {
+        setShowForm(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setUseCode(false);
+        setCode('');
+        setCodeSent(false);
+    };
+
+    const handleRequestCode = async () => {
+        setRequestingCode(true);
+        setError('');
+        try {
+            await api.post('/api/auth/employee-access/request-reset-code');
+            setUseCode(true);
+            setCodeSent(true);
+        } catch (err) {
+            setError(err instanceof ApiError ? err.message : 'Failed to send a verification code.');
+        } finally {
+            setRequestingCode(false);
+        }
+    };
+
     const handleRegenerate = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (revealedPassword && !window.confirm('This will sign out any employees currently logged in with the old password. Continue?')) return;
         setRegenerating(true);
         setError('');
         try {
-            const { password } = await api.post<{ password: string }>('/api/auth/employee-access/regenerate', { password: newPassword });
+            const { password } = await api.post<{ password: string }>('/api/auth/employee-access/regenerate', {
+                password: newPassword,
+                ...(useCode ? { code } : info?.isSetUp ? { currentPassword } : {}),
+            });
             setRevealedPassword(password);
             setInfo(prev => (prev ? { ...prev, isSetUp: true } : prev));
-            setShowForm(false);
-            setNewPassword('');
+            resetForm();
         } catch (err) {
             setError(err instanceof ApiError ? err.message : 'Failed to set the password.');
         } finally {
@@ -72,7 +101,7 @@ const EmployeeAccessCard = () => {
                 </div>
 
                 <button
-                    onClick={() => setShowForm((v) => !v)}
+                    onClick={() => (showForm ? resetForm() : setShowForm(true))}
                     className="flex items-center justify-center gap-2 bg-[#002e5d] text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-900 transition-all shrink-0"
                 >
                     <RefreshCw size={14} />
@@ -81,25 +110,65 @@ const EmployeeAccessCard = () => {
             </div>
 
             {showForm && (
-                <form onSubmit={handleRegenerate} className="mt-4 flex flex-col sm:flex-row gap-3">
-                    <input
-                        type="text"
-                        placeholder="New shared password"
-                        aria-label="New shared password"
-                        className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        minLength={6}
-                        autoFocus
-                        required
-                    />
-                    <button
-                        type="submit"
-                        disabled={regenerating}
-                        className="bg-[#002e5d] text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-900 transition-all disabled:opacity-60 shrink-0"
-                    >
-                        {regenerating ? 'Saving...' : 'Save'}
-                    </button>
+                <form onSubmit={handleRegenerate} className="mt-4 space-y-3">
+                    {info.isSetUp && (
+                        useCode ? (
+                            <input
+                                type="text"
+                                placeholder="6-digit code from your email"
+                                aria-label="Verification code"
+                                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
+                                value={code}
+                                onChange={(e) => setCode(e.target.value)}
+                                maxLength={6}
+                                autoFocus
+                                required
+                            />
+                        ) : (
+                            <input
+                                type="password"
+                                placeholder="Current shared password"
+                                aria-label="Current shared password"
+                                className="w-full p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                autoFocus
+                                required
+                            />
+                        )
+                    )}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <input
+                            type="text"
+                            placeholder="New shared password"
+                            aria-label="New shared password"
+                            className="flex-1 p-3 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-sm"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            minLength={6}
+                            required
+                        />
+                        <button
+                            type="submit"
+                            disabled={regenerating}
+                            className="bg-[#002e5d] text-white px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-900 transition-all disabled:opacity-60 shrink-0"
+                        >
+                            {regenerating ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
+                    {info.isSetUp && !useCode && (
+                        <button
+                            type="button"
+                            onClick={handleRequestCode}
+                            disabled={requestingCode}
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-800 transition-colors disabled:opacity-60"
+                        >
+                            {requestingCode ? 'Sending code...' : "Don't know the current password? Email me a code"}
+                        </button>
+                    )}
+                    {codeSent && useCode && (
+                        <p className="text-[11px] font-bold text-green-600">A verification code was sent to your registered email.</p>
+                    )}
                 </form>
             )}
 

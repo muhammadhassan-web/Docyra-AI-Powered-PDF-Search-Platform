@@ -23,6 +23,7 @@ export interface AuthContextValue {
     // plaintext password is ever available. See EmployeeAccessRevealModal.
     employeeAccessReveal: EmployeeAccess | null;
     clearEmployeeAccessReveal: () => void;
+    refreshUser: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

@@ -12,6 +12,10 @@ const envSchema = z.object({
     GEMINI_MODEL: z.string().optional(),
     GEMINI_EMBEDDING_MODEL: z.string().optional(),
     GEMINI_EMBEDDING_DIMENSIONS: z.string().optional(),
+    // Optional — password-reset emails are unavailable without these, but the
+    // app otherwise runs fine (same graceful-degradation pattern as Gemini).
+    EMAIL_USER: z.string().optional(),
+    EMAIL_APP_PASSWORD: z.string().optional(),
     PORT: z.string().optional(),
     NODE_ENV: z.string().optional(),
 });

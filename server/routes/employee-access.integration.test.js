@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app.js';
 import { startTestDB, stopTestDB, clearTestDB } from '../test/db.js';
+
+vi.mock('../utils/email.js', () => ({ sendMail: vi.fn(async () => {}) }));
+const { sendMail } = await import('../utils/email.js');
 
 const app = createApp();
 
@@ -121,7 +124,22 @@ describe('Employee shared login', () => {
             expect(res.status).toBe(403);
         });
 
-        it('rotates the password and invalidates sessions issued with the old one', async () => {
+        it('rejects rotation without the current password or a verification code', async () => {
+            const { agent: ownerAgent } = await registerOwner();
+            const res = await ownerAgent.post('/api/auth/employee-access/regenerate').send({ password: 'rotated-password-1' });
+            expect(res.status).toBe(400);
+        });
+
+        it('rejects rotation with the wrong current password', async () => {
+            const { agent: ownerAgent } = await registerOwner();
+            const res = await ownerAgent.post('/api/auth/employee-access/regenerate').send({
+                password: 'rotated-password-1',
+                currentPassword: 'not-the-real-one',
+            });
+            expect(res.status).toBe(401);
+        });
+
+        it('rotates the password with the correct current password, and invalidates sessions issued with the old one', async () => {
             const { agent: ownerAgent, body } = await registerOwner();
             const { companyCode, password: oldPassword } = body.employeeAccess;
 
@@ -131,7 +149,10 @@ describe('Employee shared login', () => {
             expect(beforeRotate.status).toBe(200);
 
             const newPassword = 'rotated-password-1';
-            const regenRes = await ownerAgent.post('/api/auth/employee-access/regenerate').send({ password: newPassword });
+            const regenRes = await ownerAgent.post('/api/auth/employee-access/regenerate').send({
+                password: newPassword,
+                currentPassword: oldPassword,
+            });
             expect(regenRes.status).toBe(200);
             expect(regenRes.body.password).toBe(newPassword);
             expect(newPassword).not.toBe(oldPassword);
@@ -147,6 +168,74 @@ describe('Employee shared login', () => {
             // The old password no longer works.
             const oldLoginAttempt = await request(app).post('/api/auth/employee-login').send({ companyCode, password: oldPassword });
             expect(oldLoginAttempt.status).toBe(401);
+        });
+
+        it('rotates the password with a verification code instead, when the current password is unknown', async () => {
+            const { agent: ownerAgent } = await registerOwner();
+
+            const codeRes = await ownerAgent.post('/api/auth/employee-access/request-reset-code');
+            expect(codeRes.status).toBe(200);
+            expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ to: 'owner@acme.test' }));
+            const sentCode = sendMail.mock.calls.at(-1)[0].text.match(/(\d{6})/)[1];
+
+            const regenRes = await ownerAgent.post('/api/auth/employee-access/regenerate').send({
+                password: 'rotated-via-code-1',
+                code: sentCode,
+            });
+            expect(regenRes.status).toBe(200);
+            expect(regenRes.body.password).toBe('rotated-via-code-1');
+        });
+
+        it('rejects a wrong or reused verification code', async () => {
+            const { agent: ownerAgent } = await registerOwner();
+            await ownerAgent.post('/api/auth/employee-access/request-reset-code');
+
+            const res = await ownerAgent.post('/api/auth/employee-access/regenerate').send({
+                password: 'rotated-via-code-1',
+                code: '000000',
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    describe('forgot / reset admin password', () => {
+        it('sends a reset code and lets the admin set a new password with it', async () => {
+            await registerOwner('owner@acme.test');
+
+            const forgotRes = await request(app).post('/api/auth/forgot-password').send({ email: 'owner@acme.test' });
+            expect(forgotRes.status).toBe(200);
+            const sentCode = sendMail.mock.calls.at(-1)[0].text.match(/(\d{6})/)[1];
+
+            const resetRes = await request(app).post('/api/auth/reset-password').send({
+                email: 'owner@acme.test',
+                code: sentCode,
+                newPassword: 'brand-new-password-1',
+            });
+            expect(resetRes.status).toBe(200);
+
+            const loginRes = await request(app).post('/api/auth/login').send({ email: 'owner@acme.test', password: 'brand-new-password-1' });
+            expect(loginRes.status).toBe(200);
+
+            // Old password no longer works.
+            const oldLogin = await request(app).post('/api/auth/login').send({ email: 'owner@acme.test', password: 'correct-horse-9' });
+            expect(oldLogin.status).toBe(401);
+        });
+
+        it('gives the same generic response for an unregistered email (no enumeration)', async () => {
+            const res = await request(app).post('/api/auth/forgot-password').send({ email: 'nobody@acme.test' });
+            expect(res.status).toBe(200);
+        });
+
+        it('rejects an invalid code', async () => {
+            await registerOwner('owner@acme.test');
+            await request(app).post('/api/auth/forgot-password').send({ email: 'owner@acme.test' });
+
+            const res = await request(app).post('/api/auth/reset-password').send({
+                email: 'owner@acme.test',
+                code: '000000',
+                newPassword: 'brand-new-password-1',
+            });
+            expect(res.status).toBe(400);
         });
     });
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatWindow from './components/ChatWindow';
 import AdminPanel from './components/AdminPanel';
+import CompanySettings from './components/CompanySettings';
 import AuthScreen from './components/AuthScreen';
 import LandingPage from './components/LandingPage';
 import EmployeeAccessRevealModal from './components/EmployeeAccessRevealModal';
@@ -16,8 +17,9 @@ function App() {
     const { user, isLoading } = useAuth();
     const [publicScreen, setPublicScreen] = useState<PublicScreen>('landing');
 
-    const [view, setView] = useState<'chat' | 'admin'>(() => {
-        return (localStorage.getItem('docyra_current_view') as 'chat' | 'admin') || 'chat';
+    const [view, setView] = useState<'chat' | 'admin' | 'settings'>(() => {
+        const stored = localStorage.getItem('docyra_current_view');
+        return stored === 'admin' || stored === 'settings' ? stored : 'chat';
     });
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -54,14 +56,19 @@ function App() {
         // browser would otherwise strand a member/employee account on the
         // "Access Required" screen — they have no toggle button to get back
         // to chat since it's hidden for accounts that can't manage the vault.
-        if (user && !canManageVault && view === 'admin') {
+        if (user && !canManageVault && (view === 'admin' || view === 'settings')) {
             setView('chat');
         }
     }, [user, canManageVault, view]);
 
     const handleToggleView = () => {
         setIsMobileMenuOpen(false);
-        setView(view === 'admin' ? 'chat' : 'admin');
+        setView(view === 'admin' || view === 'settings' ? 'chat' : 'admin');
+    };
+
+    const handleOpenSettings = () => {
+        setIsMobileMenuOpen(false);
+        setView('settings');
     };
 
     if (isLoading) {
@@ -103,7 +110,9 @@ function App() {
             `}>
                 <Sidebar
                     onToggleAdmin={handleToggleView}
+                    onOpenSettings={handleOpenSettings}
                     isAdmin={view === 'admin'}
+                    isSettings={view === 'settings'}
                     documents={policies}
                 />
             </div>
@@ -123,7 +132,7 @@ function App() {
                             <h2 className="text-slate-800 font-bold italic text-xs md:text-sm tracking-tight">{user.organization.name.toUpperCase()}</h2>
                             <span className="text-[9px] font-black text-blue-600 uppercase tracking-[0.15em] flex items-center gap-1">
                                 {isSyncing && <Cloud size={10} className="animate-pulse" />}
-                                {view === 'admin' ? 'Vault Management' : `${user.organization.name} Agent`}
+                                {view === 'admin' ? 'Vault Management' : view === 'settings' ? 'Company Settings' : `${user.organization.name} Agent`}
                             </span>
                         </div>
                     </div>
@@ -174,6 +183,12 @@ function App() {
                                 setPolicies={setPolicies}
                                 onRefresh={fetchVaultData}
                              />
+                        </div>
+                    )}
+
+                    {view === 'settings' && canManageVault && (
+                        <div className="absolute inset-0 overflow-y-auto animate-in fade-in duration-300">
+                            <CompanySettings />
                         </div>
                     )}
                 </div>

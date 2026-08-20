@@ -10,6 +10,8 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { slugify } from '../utils/slug.js';
 import { employeeAccountEmail } from '../utils/employeeAccess.js';
 import { getNextCompanyCode } from '../utils/companyCode.js';
+import { sendMail } from '../utils/email.js';
+import { generateVerificationCode, hashVerificationCode, verifyCode, RESET_CODE_TTL_MS } from '../utils/verificationCode.js';
 
 const router = Router();
 
@@ -255,15 +257,133 @@ router.post('/employee-login', employeeLoginLimiter, async (req, res, next) => {
     }
 });
 
+// Unauthenticated — this is how an admin recovers their OWN login when they
+// don't know their current password (the authenticated /change-password
+// route above always requires it). Always responds the same way whether or
+// not the email matches an account, so this can't be used to enumerate
+// registered admin emails.
+const forgotPasswordSchema = z.object({ email: z.string().email() });
+
+router.post('/forgot-password', async (req, res, next) => {
+    try {
+        const { email } = forgotPasswordSchema.parse(req.body);
+        const genericResponse = () => res.json({ message: 'If that email is registered, a reset code has been sent.' });
+
+        const user = await User.findOne({ email: email.toLowerCase(), isEmployeeAccount: { $ne: true } });
+        if (!user) return genericResponse();
+
+        const code = generateVerificationCode();
+        user.resetCodeHash = await hashVerificationCode(code);
+        user.resetCodeExpiresAt = new Date(Date.now() + RESET_CODE_TTL_MS);
+        await user.save();
+
+        await sendMail({
+            to: user.email,
+            subject: 'Your DOCYRA password reset code',
+            text: `Your password reset code is ${code}. It expires in 15 minutes. If you didn't request this, you can ignore this email.`,
+        });
+
+        genericResponse();
+    } catch (err) {
+        if (err.name === 'ZodError') return res.status(400).json({ error: err.issues[0]?.message || 'Invalid input' });
+        next(err);
+    }
+});
+
+const resetPasswordSchema = z.object({
+    email: z.string().email(),
+    code: z.string().min(6).max(6),
+    newPassword: strongPassword,
+});
+
+router.post('/reset-password', async (req, res, next) => {
+    try {
+        const { email, code, newPassword } = resetPasswordSchema.parse(req.body);
+        const reject = () => res.status(400).json({ error: 'That code is invalid or has expired.' });
+
+        const user = await User.findOne({ email: email.toLowerCase(), isEmployeeAccount: { $ne: true } })
+            .select('+resetCodeHash +resetCodeExpiresAt');
+        if (!user) return reject();
+
+        const valid = await verifyCode(user, code);
+        if (!valid) return reject();
+
+        user.passwordHash = await bcrypt.hash(newPassword, 12);
+        user.resetCodeHash = undefined;
+        user.resetCodeExpiresAt = undefined;
+        user.failedLoginAttempts = 0;
+        user.lockedUntil = undefined;
+        user.tokenVersion += 1;
+        await user.save();
+
+        res.json({ message: 'Password updated. You can now sign in.' });
+    } catch (err) {
+        if (err.name === 'ZodError') return res.status(400).json({ error: err.issues[0]?.message || 'Invalid input' });
+        next(err);
+    }
+});
+
+// Authenticated admin, forgot the CURRENT shared employee password: emails a
+// code to the admin's own registered address (the "same email through which
+// the company is registered") that /employee-access/regenerate accepts in
+// place of the employee account's current password.
+router.post('/employee-access/request-reset-code', requireAuth, requireRole('owner', 'admin'), async (req, res, next) => {
+    try {
+        const code = generateVerificationCode();
+        const user = await User.findById(req.user._id);
+        user.resetCodeHash = await hashVerificationCode(code);
+        user.resetCodeExpiresAt = new Date(Date.now() + RESET_CODE_TTL_MS);
+        await user.save();
+
+        await sendMail({
+            to: user.email,
+            subject: 'Your DOCYRA employee-password reset code',
+            text: `Your verification code to change the shared employee password is ${code}. It expires in 15 minutes. If you didn't request this, you can ignore this email.`,
+        });
+
+        res.json({ message: 'A verification code has been sent to your registered email.' });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // Owner/admin only: rotate the shared employee password to one the company
 // chooses. Returns it once — like the initial one from /register, it is
 // never stored or retrievable again after this response.
+//
+// Requires proof of authorization: either the CURRENT employee password, or
+// a verification code (see /employee-access/request-reset-code) for when the
+// admin doesn't know the current one.
+const regenerateSchema = z.object({
+    password: employeePassword,
+    currentPassword: z.string().min(1).optional(),
+    code: z.string().min(6).max(6).optional(),
+});
+
 router.post('/employee-access/regenerate', requireAuth, requireRole('owner', 'admin'), async (req, res, next) => {
     try {
-        const { password } = z.object({ password: employeePassword }).parse(req.body);
-        const passwordHash = await bcrypt.hash(password, 12);
+        const { password, currentPassword, code } = regenerateSchema.parse(req.body);
 
         let employeeUser = await User.findOne({ organizationId: req.user.organizationId, isEmployeeAccount: true });
+
+        if (employeeUser) {
+            if (code) {
+                const admin = await User.findById(req.user._id).select('+resetCodeHash +resetCodeExpiresAt');
+                const valid = await verifyCode(admin, code);
+                if (!valid) return res.status(400).json({ error: 'That code is invalid or has expired.' });
+                admin.resetCodeHash = undefined;
+                admin.resetCodeExpiresAt = undefined;
+                await admin.save();
+            } else if (currentPassword) {
+                const valid = await bcrypt.compare(currentPassword, employeeUser.passwordHash);
+                if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+            } else {
+                return res.status(400).json({ error: 'The current password (or a verification code) is required.' });
+            }
+        }
+
+        const passwordHash = await bcrypt.hash(password, 12);
+
         if (employeeUser) {
             employeeUser.passwordHash = passwordHash;
             // Rotating the password should also end any already-logged-in
@@ -271,7 +391,8 @@ router.post('/employee-access/regenerate', requireAuth, requireRole('owner', 'ad
             employeeUser.tokenVersion += 1;
             await employeeUser.save();
         } else {
-            // Backstop for orgs created before this feature existed.
+            // Backstop for orgs created before this feature existed — nothing
+            // to authorize against yet, so no current password/code needed.
             const organization = await Organization.findById(req.user.organizationId);
             employeeUser = await User.create({
                 email: employeeAccountEmail(organization.companyCode),
@@ -336,10 +457,13 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
 });
 
 router.post('/logout', (req, res) => {
+    // Must match the attributes the cookie was originally set with (see
+    // cookieOptions above) — a mismatched SameSite/Secure means the browser
+    // treats this as a different cookie and leaves the real one in place.
     res.clearCookie(COOKIE_NAME, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     });
     res.status(200).json({ message: 'Logged out' });
 });

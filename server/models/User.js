@@ -18,6 +18,11 @@ const UserSchema = new mongoose.Schema({
     // which alone doesn't stop a distributed attack against one known email).
     failedLoginAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date },
+    // Email-verification code for password recovery — always tied to the
+    // account whose *own* registered email address received it (see
+    // POST /forgot-password and /employee-access/request-reset-code).
+    resetCodeHash: { type: String, select: false },
+    resetCodeExpiresAt: { type: Date, select: false },
 }, { timestamps: true });
 
 // Partial index: enforce at most one shared employee account per org without

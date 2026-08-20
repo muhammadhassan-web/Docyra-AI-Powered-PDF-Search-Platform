@@ -13,6 +13,7 @@ import authRoutes from './routes/auth.routes.js';
 import policiesRoutes from './routes/policies.routes.js';
 import uploadsRoutes from './routes/uploads.routes.js';
 import chatRoutes from './routes/chat.routes.js';
+import organizationRoutes from './routes/organization.routes.js';
 
 // Pure Express app construction, with no side effects (no env validation, no
 // DB connection, no listen()) so integration tests can import and exercise
@@ -41,7 +42,7 @@ export function createApp() {
     app.use(cors({
         origin: allowedOrigins.length ? allowedOrigins : false,
         credentials: true,
-        methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+        methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type'],
     }));
     app.use(express.json());
@@ -62,6 +63,7 @@ export function createApp() {
     app.use('/api/policies', policiesRoutes);
     app.use('/api/uploads', uploadsRoutes);
     app.use('/api/chat', chatRoutes);
+    app.use('/api/organization', organizationRoutes);
 
     app.get('/api/health', (req, res) => {
         const dbConnected = mongoose.connection.readyState === 1;
