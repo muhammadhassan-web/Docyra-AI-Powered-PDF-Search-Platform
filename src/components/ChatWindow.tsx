@@ -37,7 +37,7 @@ const MessageBubble = ({ children }: { children: React.ReactNode }) => {
     return <div ref={ref}>{children}</div>;
 };
 
-const ChatWindow = ({ policies = [] }: { policies?: Policy[] }) => {
+const ChatWindow = ({ policies = [], organizationName }: { policies?: Policy[]; organizationName: string }) => {
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -45,7 +45,7 @@ const ChatWindow = ({ policies = [] }: { policies?: Policy[] }) => {
     const [messages, setMessages] = useState<Message[]>([
         {
             role: 'assistant',
-            text: 'DOCYRA Intelligence Layer Online. Awaiting vault query.',
+            text: `${organizationName} Agent online. Awaiting vault query.`,
             source: 'System',
             grounded: true,
         }

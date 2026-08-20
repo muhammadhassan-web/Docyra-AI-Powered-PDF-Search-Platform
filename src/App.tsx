@@ -123,7 +123,7 @@ function App() {
                             <h2 className="text-slate-800 font-bold italic text-xs md:text-sm tracking-tight">{user.organization.name.toUpperCase()}</h2>
                             <span className="text-[9px] font-black text-blue-600 uppercase tracking-[0.15em] flex items-center gap-1">
                                 {isSyncing && <Cloud size={10} className="animate-pulse" />}
-                                {view === 'admin' ? 'Vault Management' : 'System Intelligence'}
+                                {view === 'admin' ? 'Vault Management' : `${user.organization.name} Agent`}
                             </span>
                         </div>
                     </div>
@@ -151,7 +151,7 @@ function App() {
                 <div className="flex-1 relative overflow-hidden bg-slate-50">
                     {view === 'chat' && (
                         <div className="absolute inset-0 animate-in fade-in duration-300">
-                            <ChatWindow policies={policies} />
+                            <ChatWindow policies={policies} organizationName={user.organization.name} />
                         </div>
                     )}
 

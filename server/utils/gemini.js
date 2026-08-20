@@ -6,7 +6,11 @@ import { retryWithBackoff } from './retryWithBackoff.js';
 // utils/embeddings.js. Gemini's free tier (no credit card required) is what
 // this app runs on; see .env.example for where to get a key.
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta';
-const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+// The "lite" variant, not "gemini-flash-latest" — the full flash model does
+// extended internal reasoning by default even on trivial prompts, which both
+// slows every answer by 10-20s+ and burns through free-tier quota far faster
+// than a grounded-QA task like this needs.
+const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 const MAX_DOC_CHARS = 6000;
 
 const SYSTEM_PROMPT = `You are DOCYRA, an internal policy assistant for a company. You answer employee questions using ONLY the company policy documents provided below. Never use outside knowledge.
