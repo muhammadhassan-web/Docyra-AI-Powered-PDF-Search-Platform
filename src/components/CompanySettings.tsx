@@ -168,10 +168,8 @@ const CompanySettings = () => {
                     </button>
                 </form>
 
-                <EmployeeAccessCard />
-
                 {/* Admin password */}
-                <form onSubmit={handlePasswordSubmit} className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6">
+                <form onSubmit={handlePasswordSubmit} className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6 mb-8">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
                             <KeyRound size={20} />
@@ -217,6 +215,8 @@ const CompanySettings = () => {
                         {savingPassword ? 'Saving...' : 'Update Password'}
                     </button>
                 </form>
+
+                <EmployeeAccessCard />
             </div>
         </div>
     );
