@@ -9,7 +9,10 @@ function getTransporter() {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) return null;
     if (!transporter) {
         transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            requireTLS: true,
             auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_APP_PASSWORD },
             // Without these, a blocked/unreachable SMTP port (some hosts
             // restrict outbound 465/587) hangs the request indefinitely
